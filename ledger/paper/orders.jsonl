@@ -1,0 +1,2 @@
+{"created_at": "2026-11-21T13:50:35+00:00", "decision_date": "2026-10-30", "exec_date": "2026-11-20", "id": 1, "notional": 2.67, "reason": "initial", "side": "BUY", "signal_price": 60.509998, "strategy": "dual_momentum", "symbol": "XLE"}
+{"created_at": "2026-11-21T13:50:35+00:00", "decision_date": "2026-10-30", "exec_date": "2026-11-20", "id": 2, "notional": 2.67, "reason": "initial", "side": "BUY", "signal_price": 177.240005, "strategy": "dual_momentum", "symbol": "XLV"}
