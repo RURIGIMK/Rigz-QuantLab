@@ -1,0 +1,18 @@
+# Live Strategy 1 universe: ML-ranked ETF rotation.
+# BIL is the "cash" asset the trend filter falls back to.
+us_etf:
+  - {symbol: SPY, name: US large cap}
+  - {symbol: QQQ, name: Nasdaq 100}
+  - {symbol: IWM, name: US small cap}
+  - {symbol: EFA, name: Developed ex-US}
+  - {symbol: EEM, name: Emerging markets}
+  - {symbol: TLT, name: Long Treasuries}
+  - {symbol: IEF, name: 7-10y Treasuries}
+  - {symbol: GLD, name: Gold}
+  - {symbol: XLK, name: Tech sector}
+  - {symbol: XLE, name: Energy sector}
+  - {symbol: XLV, name: Health care sector}
+  - {symbol: XLP, name: Consumer staples}
+  - {symbol: BIL, name: T-bills (cash proxy)}
+
+history_start: "2005-01-01"
