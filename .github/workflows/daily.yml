@@ -30,7 +30,7 @@ jobs:
         with: {python-version: "3.12"}
       - run: pip install -r requirements.txt
       - name: Download and validate market data
-        run: python -m quantlab.ingest_us_etf --to csv
+        run: python -m quantlab.ingest --to csv
       - name: Telegram connection check
         run: python -m quantlab.notify
       - name: Run accounts

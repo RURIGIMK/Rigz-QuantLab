@@ -16,3 +16,17 @@ us_etf:
   - {symbol: BIL, name: T-bills (cash proxy)}
 
 history_start: "2005-01-01"
+
+# Forex universe (Yahoo symbols "EURUSD=X" stored as EURUSD). Majors + liquid crosses,
+# all tradable as CFDs at Pepperstone.
+fx:
+  - {symbol: EURUSD}
+  - {symbol: GBPUSD}
+  - {symbol: USDJPY}
+  - {symbol: AUDUSD}
+  - {symbol: USDCAD}
+  - {symbol: USDCHF}
+  - {symbol: NZDUSD}
+  - {symbol: EURJPY}
+  - {symbol: EURGBP}
+  - {symbol: GBPJPY}

@@ -10,7 +10,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 docker compose up -d                 # Postgres + TimescaleDB, schema auto-applied
 pytest -q                            # data-quality tests
-python -m quantlab.ingest_us_etf     # ~20 years of ETF history
+python -m quantlab.ingest --to csv   # ETFs + forex
 ```
 
 Check it worked:
