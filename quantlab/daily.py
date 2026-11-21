@@ -137,7 +137,7 @@ def run(cfg: dict | None = None, *, signal_px: pd.DataFrame | None = None,
         actions = {s: store.read_bars("us_etf", s)[store.ACTION_COLS] for s in signal_px.columns}
     messages: list[str] = []
     for name, acct in cfg["accounts"].items():
-        if acct.get("enabled"):
+        if acct.get("enabled") and acct.get("mode") != "api":   # API accounts: quantlab.autotrade
             run_account(name, acct, cfg, signal_px, trade_px, actions or {}, root, messages)
     if send and messages:
         notify.send("\n\n".join(messages))

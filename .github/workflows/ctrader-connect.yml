@@ -1,0 +1,42 @@
+name: ctrader-connect
+# One-time broker connection. Run with no code to get the authorisation link
+# (shown in the run summary); approve access, copy the code the dashboard shows,
+# then run again with that code.
+on:
+  workflow_dispatch:
+    inputs:
+      code: {description: "Authorisation code from the dashboard (leave empty to get the link)", required: false, default: ""}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ledger-writer
+  cancel-in-progress: false
+
+jobs:
+  connect:
+    runs-on: ubuntu-latest
+    env:
+      CTRADER_CLIENT_ID: ${{ secrets.CTRADER_CLIENT_ID }}
+      CTRADER_CLIENT_SECRET: ${{ secrets.CTRADER_CLIENT_SECRET }}
+      CTRADER_AUTH_CODE: ${{ inputs.code }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - run: python -m quantlab.brokers.connect | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Save encrypted tokens
+        if: inputs.code != ''
+        run: |
+          git config user.name "quantlab-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ledger/secure/
+          git commit -m "ctrader: store encrypted tokens"
+          git pull --rebase origin main
+          git push
+      - name: Connection test
+        if: inputs.code != ''
+        run: python -m quantlab.autotrade

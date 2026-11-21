@@ -34,7 +34,7 @@ def prices(market: str, field: str = "close") -> pd.DataFrame:
 
 
 def ledger(name: str) -> Ledger:
-    return Ledger(name, CFG["accounts"][name]["initial_cash"])
+    return Ledger(name, CFG["accounts"][name].get("initial_cash", 0.0))
 
 
 def nav_frame(led: Ledger) -> pd.DataFrame:
@@ -59,6 +59,12 @@ enabled = [n for n, a in CFG["accounts"].items() if a.get("enabled")]
 telegram_ok = (ROOT / "config" / "telegram.json").exists()
 
 st.title("Rigz QuantLab")
+
+auth_code = st.query_params.get("code")
+if auth_code:
+    st.success("cTrader authorisation received. Copy this code, then run GitHub → Actions → "
+               "**ctrader-connect** → Run workflow, and paste it into the *code* box. It expires in a few minutes.")
+    st.code(auth_code, language=None)
 c = st.columns(4)
 c[0].metric("Market data through", str(last_date))
 c[1].metric("Active accounts", ", ".join(enabled) or "none")
@@ -78,7 +84,7 @@ with tab_acct:
             st.info("No activity yet.")
             continue
 
-        nav, start_nav = navs["nav"].iloc[-1], acct["initial_cash"]
+        nav, start_nav = navs["nav"].iloc[-1], acct.get("initial_cash") or navs["nav"].iloc[0]
         m = st.columns(5)
         m[0].metric("NAV (USD)", f"${nav:,.2f}", pct(nav / start_nav - 1) if start_nav else None)
         m[1].metric("Cash", f"${led.cash():,.2f}")
@@ -96,8 +102,12 @@ with tab_acct:
                 x="date:T", y=alt.Y("drawdown:Q", axis=alt.Axis(format="%"), title="Drawdown")
             ).properties(height=120), use_container_width=True)
         with right:
-            pos = led.positions()
-            if pos:
+            pos = led.positions() if acct["mode"] != "api" else navs.iloc[-1].get("holdings") or {}
+            if pos and acct["mode"] == "api":
+                st.caption("Broker positions (units, + long / − short)")
+                st.dataframe(pd.DataFrame([{"symbol": k, "units": v} for k, v in pos.items()]),
+                             hide_index=True, use_container_width=True)
+            elif pos:
                 last_px = etf.iloc[-1]
                 rows = [{"symbol": s, "quantity": q, "price": float(last_px.get(s, float("nan"))),
                          "value": q * float(last_px.get(s, float("nan")))} for s, q in pos.items()]
@@ -110,7 +120,7 @@ with tab_acct:
                 st.write("No positions.")
 
         with st.expander("Orders, fills, dividends and events"):
-            for kind in ("orders", "fills", "cashflows", "events"):
+            for kind in ("orders", "fills", "executions", "cashflows", "events"):
                 rows = led._read(kind)
                 if rows:
                     st.caption(kind)

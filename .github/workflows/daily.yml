@@ -35,7 +35,13 @@ jobs:
         run: python -m quantlab.notify
       - name: Run accounts
         run: python -m quantlab.daily
+      - name: Autonomous broker trading
+        env:
+          CTRADER_CLIENT_ID: ${{ secrets.CTRADER_CLIENT_ID }}
+          CTRADER_CLIENT_SECRET: ${{ secrets.CTRADER_CLIENT_SECRET }}
+        run: python -m quantlab.autotrade
       - name: Commit data and ledger
+        if: always()
         run: |
           git config user.name "quantlab-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

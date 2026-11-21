@@ -17,6 +17,17 @@ accounts:
     mode: paper            # fills simulated at the execution-day close
     initial_cash: 5.40     # ~KSh 700, mirrors the planned live account
     fee_bps: 10
+  pepperstone_demo:
+    enabled: true          # trades automatically once cTrader is connected (ctrader-connect workflow)
+    mode: api              # fully autonomous: no human in the loop
+    broker: ctrader
+    env: demo              # demo | live; the code refuses to trade if the broker's flag disagrees
+    account_login: 5377878
+    currency: EUR
+    market: us_etf         # trades the ETF strategy as share CFDs
+    max_gross: 1.0         # no leverage for the ETF strategy
+    max_pos: 0.6
+    symbol_map: {}         # e.g. {SPY: "SPY.US"} if auto-matching misses a symbol
   live:
     enabled: false         # flip to true once the broker account is funded
     mode: manual           # Telegram tickets; you place orders and record fills

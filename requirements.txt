@@ -6,3 +6,5 @@ yfinance>=0.2.40
 pytest>=8
 streamlit>=1.40
 altair>=5
+websockets>=13
+cryptography>=42
