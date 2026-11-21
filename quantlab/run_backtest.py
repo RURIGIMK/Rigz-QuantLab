@@ -10,12 +10,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from quantlab import backtest, db, metrics, strategies
+from quantlab import backtest, metrics, store, strategies
 
 REPORTS = Path(__file__).resolve().parent.parent / "reports"
 
 
-def load_prices(market: str = "US") -> pd.DataFrame:
+def load_prices_db(market: str = "US") -> pd.DataFrame:
+    from quantlab import db
     with db.connect() as conn:
         rows = conn.execute(
             """SELECT b.trade_date, i.symbol, b.adj_close
@@ -30,8 +31,8 @@ def load_prices(market: str = "US") -> pd.DataFrame:
     return wide.dropna(how="any", subset=wide.columns).ffill(limit=3)
 
 
-def main(cost_bps: float) -> None:
-    prices = load_prices()
+def main(cost_bps: float, source: str) -> None:
+    prices = store.load_prices("us_etf") if source == "csv" else load_prices_db()
     runs = [
         backtest.run(prices, strategies.dual_momentum(), cost_bps, name="dual_momentum"),
         backtest.run(prices, strategies.buy_and_hold("SPY"), cost_bps, name="SPY"),
@@ -49,4 +50,6 @@ def main(cost_bps: float) -> None:
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--cost-bps", type=float, default=10.0)
-    main(p.parse_args().cost_bps)
+    p.add_argument("--source", choices=["csv", "db"], default="csv")
+    a = p.parse_args()
+    main(a.cost_bps, a.source)
