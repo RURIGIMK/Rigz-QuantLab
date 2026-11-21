@@ -31,6 +31,8 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Download and validate market data
         run: python -m quantlab.ingest_us_etf --to csv
+      - name: Telegram connection check
+        run: python -m quantlab.notify
       - name: Run accounts
         run: python -m quantlab.daily
       - name: Commit data and ledger

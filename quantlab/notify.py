@@ -55,3 +55,12 @@ def send(text: str) -> bool:
     _call("sendMessage", {"chat_id": cid, "text": text, "parse_mode": "HTML",
                           "disable_web_page_preview": True})
     return True
+
+
+if __name__ == "__main__":
+    # Connection check: discovers and saves the chat id (sending a one-time
+    # confirmation) if it isn't configured yet.
+    if not _token():
+        print("[notify] TELEGRAM_BOT_TOKEN not set")
+    else:
+        print(f"[notify] chat configured: {chat_id() is not None}")
