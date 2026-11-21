@@ -35,17 +35,25 @@ python -m quantlab.run_backtest --cost-bps 30   # stress: does the edge survive 
 Compares dual momentum against SPY buy-and-hold and an equal-weight portfolio.
 Decisions use month-end closes; trades fill on the next close; costs are charged on turnover.
 
-## Roadmap
+## How it runs (no local setup needed)
 
-| Step | Build | Done when |
+| Workflow | When | What |
 |---|---|---|
-| 1 | DB schema, ETF ingestion, data validation | 13 ETFs loaded, tests green |
-| 2 | Backtester: monthly rebalance, cost model, walk-forward | Reproduces buy-and-hold SPY exactly; baseline rule results match a hand check |
-| 3 | Baseline strategy: dual-momentum rotation (top 2 + BIL trend filter) | Backtest report with Sharpe, max drawdown, turnover, after costs |
-| 4 | Risk engine: target weights to trades, min order size, caps, kill switch | Unit tests for every rule |
-| 5 | PaperAdapter + ledger | Paper account runs a full month automatically |
-| 6 | ManualAdapter: Telegram order tickets, fill entry, reconciliation, slippage view | Dry run with a fake fill reconciles to zero difference |
-| 7 | **Go live, KSh ~700, baseline rule only** | 3 clean monthly cycles |
-| 8 | Feature store + LightGBM ranker, walk-forward | Beats baseline out of sample after costs, or is discarded |
-| 9 | NSE ingestion + research track | Liquidity-filtered universe, stale-close handling |
-| 10 | Dashboard (React): live vs paper vs backtest, drawdown, kill switch | Used every month |
+| `daily` | Weekdays 01:17 Nairobi, or on demand | Downloads data → applies dividends/splits → month-end rebalance → NAV → kill switch → Telegram |
+| `record-fill` | You trigger it after placing an order | Records the real fill, reports slippage on Telegram |
+| `ci` | Every push | Full test suite on real data |
+
+State lives in git: `data/` (market data), `ledger/<account>/` (orders, fills, cashflows, NAV, events).
+Accounts and risk limits: `config/accounts.yaml`. To go live, fund the broker, set `live.enabled: true`
+and `live.initial_cash`, and the next month-end sends you tickets.
+
+## Status
+
+| Step | Status |
+|---|---|
+| Data pipeline (Yahoo via Actions), validation | done |
+| Backtester + dual-momentum baseline | done, see `docs/results/` |
+| Risk engine, ledger, paper account, kill switch | done; paper replay matches backtest to 8 digits |
+| Telegram tickets + fill recording | done |
+| Go live (~KSh 700) | waiting on broker account |
+| Turnover reduction, ML ranker, NSE track, dashboard | next |

@@ -12,6 +12,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 COLS = ["open", "high", "low", "close", "adj_close", "volume"]
+ACTION_COLS = ["dividends", "splits"]   # per-share cash dividend on ex-date; split ratio (0 = none)
 
 
 def path(market: str, symbol: str) -> Path:
@@ -21,7 +22,8 @@ def path(market: str, symbol: str) -> Path:
 def write_bars(market: str, symbol: str, df: pd.DataFrame) -> Path:
     p = path(market, symbol)
     p.parent.mkdir(parents=True, exist_ok=True)
-    out = df[COLS].copy()
+    cols = COLS + [c for c in ACTION_COLS if c in df.columns]
+    out = df[cols].copy()
     out.index.name = "date"
     out.round(6).to_csv(p, date_format="%Y-%m-%d")
     return p
@@ -29,7 +31,10 @@ def write_bars(market: str, symbol: str, df: pd.DataFrame) -> Path:
 
 def read_bars(market: str, symbol: str) -> pd.DataFrame:
     df = pd.read_csv(path(market, symbol), index_col="date", parse_dates=True)
-    return df[COLS]
+    for c in ACTION_COLS:
+        if c not in df.columns:
+            df[c] = 0.0
+    return df[COLS + ACTION_COLS]
 
 
 def available(market: str) -> list[str]:
@@ -43,5 +48,5 @@ def load_prices(market: str = "us_etf", field: str = "adj_close",
     symbols = symbols or available(market)
     if not symbols:
         raise FileNotFoundError(f"no data in {DATA / market}; run the data workflow")
-    wide = pd.concat({s: read_bars(market, s)[field] for s in symbols}, axis=1)
+    wide = pd.concat({s: read_bars(market, s)[field] for s in symbols}, axis=1, sort=True)
     return wide.dropna(how="any").sort_index()

@@ -1,0 +1,26 @@
+# Accounts the daily runner manages. Amounts in USD.
+strategy:
+  name: dual_momentum
+  top_n: 2
+  lookback: 252
+  cash_symbol: BIL
+
+risk:
+  min_order: 1.00          # smallest order the broker app accepts
+  max_weight: 0.60         # cap per risky asset (cash proxy exempt)
+  cash_buffer: 0.01        # keep 1% uninvested to absorb price moves before you fill
+  kill_drawdown: 0.30      # halt new trades if NAV falls 30% from its peak
+
+accounts:
+  paper:
+    enabled: true
+    mode: paper            # fills simulated at the execution-day close
+    initial_cash: 5.40     # ~KSh 700, mirrors the planned live account
+    fee_bps: 10
+  live:
+    enabled: false         # flip to true once the broker account is funded
+    mode: manual           # Telegram tickets; you place orders and record fills
+    initial_cash: 0.0
+
+tax:
+  us_dividend_withholding: 0.30   # US withholds 30% on dividends paid to Kenyan residents (no tax treaty)

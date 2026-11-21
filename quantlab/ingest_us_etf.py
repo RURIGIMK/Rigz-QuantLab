@@ -25,14 +25,18 @@ MARKET = "us_etf"
 def fetch(symbol: str, start: str) -> pd.DataFrame:
     import yfinance as yf
 
-    raw = yf.Ticker(symbol).history(start=start, auto_adjust=False, actions=False)
+    raw = yf.Ticker(symbol).history(start=start, auto_adjust=False, actions=True)
     if raw.empty:
         return raw
     raw.index = pd.to_datetime(raw.index).tz_localize(None).normalize()
     df = raw.rename(columns={"Open": "open", "High": "high", "Low": "low",
                              "Close": "close", "Adj Close": "adj_close",
-                             "Volume": "volume"})
-    return df[store.COLS]
+                             "Volume": "volume", "Dividends": "dividends",
+                             "Stock Splits": "splits"})
+    for c in store.ACTION_COLS:
+        if c not in df.columns:
+            df[c] = 0.0
+    return df[store.COLS + store.ACTION_COLS]
 
 
 def run(to: str, from_csv: bool) -> int:

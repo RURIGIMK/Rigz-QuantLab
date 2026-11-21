@@ -1,0 +1,47 @@
+name: record-fill
+# Record a real fill from your phone: GitHub app → Actions → record-fill → Run workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      order:    {description: "Order # from the Telegram ticket", required: true}
+      quantity: {description: "Shares bought/sold (fractional ok, e.g. 0.0123)", required: true}
+      price:    {description: "Average fill price per share in USD", required: true}
+      fees:     {description: "Fees in USD", required: false, default: "0"}
+      account:  {description: "Account", required: false, default: "live"}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ledger-writer
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - env:
+          ACCOUNT: ${{ inputs.account }}
+          ORDER: ${{ inputs.order }}
+          QTY: ${{ inputs.quantity }}
+          PRICE: ${{ inputs.price }}
+          FEES: ${{ inputs.fees }}
+        run: >
+          python -m quantlab.record_fill --account "$ACCOUNT" --order "$ORDER"
+          --quantity "$QTY" --price "$PRICE" --fees "$FEES"
+      - env:
+          ACCOUNT: ${{ inputs.account }}
+          ORDER: ${{ inputs.order }}
+        run: |
+          git config user.name "quantlab-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ledger/
+          git commit -m "fill: $ACCOUNT order #$ORDER"
+          git pull --rebase origin main
+          git push
