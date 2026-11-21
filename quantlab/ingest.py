@@ -31,7 +31,7 @@ def clean_fx(df: pd.DataFrame) -> pd.DataFrame:
     df["low"] = df[["low", "open", "close"]].min(axis=1)
     df["adj_close"] = df["close"]
     df["volume"] = 0
-    return df[df["close"] > 0]
+    return df[(df["close"] > 0) & (df.index.dayofweek < 5)]   # drop partial weekend bars
 
 
 def fetch(symbol: str, start: str, market: str = "us_etf") -> pd.DataFrame:
@@ -63,6 +63,8 @@ def run(to: str, from_csv: bool) -> int:
                 store.write_bars(market, sym, df)
         elif market == "us_etf":
             load_db(cfg, frames)
+    if to == "csv" and not from_csv:
+        ingest_rates(cfg, failed)
     log.info("rejected: %s", failed or "none")
     return 1 if failed else 0
 
@@ -82,6 +84,29 @@ def ingest_market(cfg: dict, market: str, from_csv: bool, failed: list) -> dict[
         frames[sym] = df
         log.info("%s/%s: %d rows %s -> %s", market, sym, len(df), df.index[0].date(), df.index[-1].date())
     return frames
+
+
+def ingest_rates(cfg: dict, failed: list) -> None:
+    """Monthly short rates from FRED's public CSV endpoint -> data/rates/<CCY>.csv."""
+    import io
+    import urllib.request
+    out = store.DATA / "rates"
+    out.mkdir(parents=True, exist_ok=True)
+    for ccy, series in cfg.get("rates", {}).items():
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                df = pd.read_csv(io.BytesIO(r.read()))
+            df.columns = ["date", "rate"]
+            df["rate"] = pd.to_numeric(df["rate"], errors="coerce")
+            df = df.dropna()
+            if df.empty:
+                raise ValueError("no rows")
+            df.to_csv(out / f"{ccy}.csv", index=False)
+            log.info("rates/%s (%s): %d months %s -> %s", ccy, series, len(df), df.date.iloc[0], df.date.iloc[-1])
+        except Exception as e:  # noqa: BLE001 - one bad series shouldn't stop the rest
+            log.error("REJECT rates/%s: %s", ccy, e)
+            failed.append(f"rates/{ccy}")
 
 
 def load_db(cfg: dict, frames: dict[str, pd.DataFrame]) -> None:
