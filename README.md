@@ -1,5 +1,7 @@
 # QuantLab
 
+**Dashboard (private):** https://rigz-quantlab.streamlit.app — redeploys automatically on every push.
+
 Signal-generating trading platform with human-in-the-loop execution.
 The system decides; you place the orders; the ledger reconciles.
 
@@ -56,4 +58,7 @@ and `live.initial_cash`, and the next month-end sends you tickets.
 | Risk engine, ledger, paper account, kill switch | done; paper replay matches backtest to 8 digits |
 | Telegram tickets + fill recording | done |
 | Go live (~KSh 700) | waiting on broker account |
-| Turnover reduction, ML ranker, NSE track, dashboard | next |
+| Dashboard (Streamlit, private) | done |
+| Forex: trend and carry researched on 20y real data | both rejected, see `docs/results/` |
+| Pepperstone cTrader adapter (autonomous) | waiting on demo account + Open API app |
+| Turnover reduction, ML ranker | next |
