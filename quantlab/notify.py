@@ -37,7 +37,12 @@ def chat_id() -> int | None:
         chat = (upd.get("message") or {}).get("chat") or {}
         if chat.get("type") == "private":
             CONFIG.write_text(json.dumps({"chat_id": chat["id"]}, indent=2) + "\n")
+            _call("sendMessage", {"chat_id": chat["id"], "text":
+                  "🔗 Rigz QuantLab connected. You'll get rebalance tickets, fill confirmations "
+                  "and kill-switch alerts here."})
             return chat["id"]
+    print(f"[notify] token set but no private chat found in {len(_call('getUpdates'))} updates; "
+          "message the bot, then rerun")
     return None
 
 
