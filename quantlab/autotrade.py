@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import html
+import os
 import sys
 
 import pandas as pd
@@ -137,7 +138,7 @@ def main() -> int:
     except RuntimeError as e:
         print(f"[autotrade] skipped: {e}")
         return 0
-    if tokens.load(secret) is None:
+    if tokens.load(secret) is None and not os.environ.get("CTRADER_REFRESH_TOKEN"):
         # credentials exist but the one-time ctrader-connect step hasn't run yet:
         # that's "not connected", not a failure; stay quiet instead of alerting nightly
         print("[autotrade] skipped: broker not connected yet (run ctrader-connect)")

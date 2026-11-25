@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -40,8 +41,17 @@ def load(secret: str, path: Path = TOKEN_FILE) -> dict | None:
 
 def _token_call(params: dict) -> dict:
     url = TOKEN_URL + "?" + urllib.parse.urlencode(params)
-    with urllib.request.urlopen(url, timeout=30) as r:
-        body = json.loads(r.read())
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    body = {}
+    for method in ("GET", "POST"):   # docs show GET for exchange; refresh example uses POST
+        req = urllib.request.Request(url, method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                body = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            body = {"description": f"HTTP {e.code}"}
+        if body.get("accessToken") or body.get("access_token"):
+            break
     if "accessToken" not in body and "access_token" not in body:
         raise RuntimeError(f"token endpoint error: {body.get('description') or body.get('errorCode') or body}")
     access = body.get("accessToken") or body.get("access_token")
@@ -64,12 +74,27 @@ def valid_access_token(client_id: str, secret: str, path: Path = TOKEN_FILE) -> 
     """Return a usable access token, refreshing (and re-saving) it if close to expiry."""
     tok = load(secret, path)
     if tok is None:
+        tok = bootstrap_from_env(client_id, secret, path)
+    if tok is None:
         raise RuntimeError("no cTrader tokens yet: run the ctrader-connect workflow first")
     if tok["expires_at"] - time.time() < REFRESH_MARGIN_S:
         tok = _token_call({"grant_type": "refresh_token", "refresh_token": tok["refresh_token"],
                            "client_id": client_id, "client_secret": secret})
         save(tok, secret, path)
     return tok["access_token"]
+
+
+def bootstrap_from_env(client_id: str, secret: str, path: Path = TOKEN_FILE) -> dict | None:
+    """First run: turn the CTRADER_REFRESH_TOKEN secret (from the Sandbox page) into
+    stored tokens. The refresh rotates the token, so afterwards the encrypted file
+    is the source of truth and the secret is never needed again."""
+    refresh = os.environ.get("CTRADER_REFRESH_TOKEN", "").strip()
+    if not refresh:
+        return None
+    tok = _token_call({"grant_type": "refresh_token", "refresh_token": refresh,
+                       "client_id": client_id, "client_secret": secret})
+    save(tok, secret, path)
+    return tok
 
 
 def env_credentials() -> tuple[str, str]:

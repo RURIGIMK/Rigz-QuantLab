@@ -29,6 +29,11 @@ def main() -> int:
             print("application credentials: ACCEPTED by cTrader API")
     except Exception as e:  # noqa: BLE001
         print(f"application credentials: REJECTED ({e})")
+    if not code and tokens.load(secret) is None and os.environ.get("CTRADER_REFRESH_TOKEN"):
+        tok = tokens.bootstrap_from_env(cid, secret)
+        print("cTrader tokens stored (encrypted) from the refresh-token secret; "
+              f"valid {(tok['expires_at'] - __import__('time').time()) / 86400:.0f} days, refreshed automatically.")
+        return 0
     if not code:
         print("Open this link, approve access, then copy the 'code' shown on the dashboard:")
         print(tokens.auth_link(cid, REDIRECT_URI))

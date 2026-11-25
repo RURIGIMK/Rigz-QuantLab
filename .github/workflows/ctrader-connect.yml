@@ -20,6 +20,7 @@ jobs:
     env:
       CTRADER_CLIENT_ID: ${{ secrets.CTRADER_CLIENT_ID }}
       CTRADER_CLIENT_SECRET: ${{ secrets.CTRADER_CLIENT_SECRET }}
+      CTRADER_REFRESH_TOKEN: ${{ secrets.CTRADER_REFRESH_TOKEN }}
       CTRADER_AUTH_CODE: ${{ inputs.code }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
     steps:
@@ -29,14 +30,15 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m quantlab.brokers.connect | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Save encrypted tokens
-        if: inputs.code != ''
+        if: hashFiles('ledger/secure/ctrader_tokens.enc') != ''
         run: |
           git config user.name "quantlab-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ledger/secure/
+          git add ledger/secure/ ledger/
+          git diff --cached --quiet && exit 0
           git commit -m "ctrader: store encrypted tokens"
           git pull --rebase origin main
           git push
       - name: Connection test
-        if: inputs.code != ''
+        if: hashFiles('ledger/secure/ctrader_tokens.enc') != ''
         run: python -m quantlab.autotrade
