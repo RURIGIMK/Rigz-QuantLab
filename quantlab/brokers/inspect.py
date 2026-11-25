@@ -25,7 +25,7 @@ def main() -> None:
         for sym in wanted:
             close = sorted(n for n in names if sym.upper() in n.upper().replace(".", "").replace("_", ""))[:8]
             print(f"  {sym}: candidates {close}")
-        ids = resolve_symbols(wanted, names, cfg.get("symbol_map", {}))
+        ids = resolve_symbols(wanted + store.available("fx"), names, cfg.get("symbol_map", {}))
         for name, spec in c.symbol_specs(ids).items():
             print("  spec", name, json.dumps(spec.__dict__))
         print("positions", [p.__dict__ for p in c.positions()])
