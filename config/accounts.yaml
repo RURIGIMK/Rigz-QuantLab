@@ -25,6 +25,9 @@ accounts:
     account_login: 5377878
     currency: EUR
     market: us_etf         # trades the ETF strategy as share CFDs
+    # Only ETFs Pepperstone offers as CFDs (checked 2026-11-25). BIL is signal-only:
+    # a "cash" decision means staying flat.
+    universe: [SPY, QQQ, IWM, EFA, EEM, TLT, IEF, XLE, BIL]
     max_gross: 1.0         # no leverage for the ETF strategy
     max_pos: 0.6
     symbol_map: {}         # e.g. {SPY: "SPY.US"} if auto-matching misses a symbol

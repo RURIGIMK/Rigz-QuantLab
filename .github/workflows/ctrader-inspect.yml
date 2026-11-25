@@ -15,3 +15,4 @@ jobs:
         with: {python-version: "3.12"}
       - run: pip install -r requirements.txt
       - run: python -m quantlab.brokers.inspect
+      - run: python -m quantlab.autotrade --dry-run

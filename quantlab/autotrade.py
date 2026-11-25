@@ -41,12 +41,13 @@ def resolve_symbols(wanted: list[str], available: dict[str, int], overrides: dic
     return out
 
 
-def run_account(name: str, acct: dict, cfg: dict, messages: list[str]) -> None:
+def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: bool = False) -> None:
     cid, secret = tokens.env_credentials()
     access = tokens.valid_access_token(cid, secret)
     led = Ledger(name, acct.get("initial_cash", 0.0))
 
-    signal_px = store.load_prices(acct.get("market", "us_etf"), "adj_close")
+    signal_px = store.load_prices(acct.get("market", "us_etf"), "adj_close",
+                                  acct.get("universe"))
     close = store.load_prices(acct.get("market", "us_etf"), "close").iloc[-1]
     usd_px = {**close.to_dict()}
     if store.available("fx"):
@@ -74,7 +75,10 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str]) -> None:
         for p in positions:
             n = id_to_sym.get(p.symbol_id, str(p.symbol_id))
             holdings[n] = holdings.get(n, 0.0) + (p.volume if p.side == BUY else -p.volume) / 100
-        led.add_nav(today, nav_usd, nav_usd, holdings)
+        print(f"[autotrade] {name}: balance {balance:.2f} {acct.get('currency', 'USD')} = ${nav_usd:,.2f}; "
+              f"resolved {sorted(specs)}; positions {holdings}")
+        if not dry_run:
+            led.add_nav(today, nav_usd, nav_usd, holdings)
 
         # kill switch: flatten and stop
         peak = max(n["nav"] for n in led.nav_history())
@@ -95,9 +99,21 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str]) -> None:
         if decision is None or led.rebalanced_for(decision.date().isoformat()):
             return
         target = build_strategy(cfg)(signal_px.loc[:decision])
-        actions = planner.plan(target.to_dict(), nav_usd, usd_px, positions, specs,
+        cash_sym = cfg["strategy"]["cash_symbol"]
+        trade_target = {k: v for k, v in target.items() if k != cash_sym}   # cash proxy = stay flat
+        unmapped = sorted(set(trade_target) - set(specs))
+        actions = planner.plan(trade_target, nav_usd, usd_px, positions, specs,
                                max_gross=acct.get("max_gross", 1.0), max_pos=acct.get("max_pos", 0.6))
-        led.add_event(today, "rebalance", decision.date().isoformat())
+        print(f"[autotrade] {name}: decision {decision.date()} target {dict(target)}; unmapped {unmapped}")
+        for a in actions:
+            print(f"[autotrade]   plan {a.kind} {SIDE[a.side]} {a.volume / 100:g} {a.symbol}"
+                  f" (~${a.volume / 100 * usd_px.get(a.symbol, 0):,.0f})")
+        if dry_run:
+            return
+        if unmapped:
+            messages.append(f"⚠️ <b>{name}</b>: target includes {', '.join(unmapped)}, which the broker "
+                            "doesn't offer. Not trading; fix the account universe or symbol_map.")
+            return
         done, failed = [], []
         for a in actions:
             try:
@@ -121,13 +137,15 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str]) -> None:
              f"Target: {html.escape(tgt)}", f"Balance ${nav_usd:,.2f}; {len(done)} orders executed."]
     lines += [f"• {a.kind} {SIDE[a.side]} {a.volume / 100:g} {a.symbol}" for a in done]
     if failed:
-        lines.append("⚠️ Failed: " + html.escape("; ".join(failed)))
+        lines.append("⚠️ Failed: " + html.escape("; ".join(failed)) + " (will retry next run)")
+    else:
+        led.add_event(today, "rebalance", decision.date().isoformat())   # only mark done when complete
     if missing:
         lines.append("Not tradable at broker: " + ", ".join(missing))
     messages.append("\n".join(lines))
 
 
-def main() -> int:
+def main(dry_run: bool = False) -> int:
     cfg = load_config()
     api_accounts = {n: a for n, a in cfg["accounts"].items() if a.get("enabled") and a.get("mode") == "api"}
     if not api_accounts:
@@ -147,12 +165,12 @@ def main() -> int:
     status = 0
     for name, acct in api_accounts.items():
         try:
-            run_account(name, acct, cfg, messages)
+            run_account(name, acct, cfg, messages, dry_run)
         except Exception as e:  # noqa: BLE001 - one account failing must be reported, not hidden
             status = 1
             messages.append(f"❌ <b>{name}</b> autotrade error: {html.escape(str(e))}")
             print(f"[autotrade] {name}: {e}", file=sys.stderr)
-    if messages:
+    if messages and not dry_run:
         notify.send("\n\n".join(messages))
     for m in messages:
         print(m)
@@ -160,4 +178,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(dry_run="--dry-run" in sys.argv))
