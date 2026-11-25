@@ -108,3 +108,13 @@ def test_kill_switch_halts_trading(prices, tmp_path):
     assert led.halted()
     halt_day = next(e["date"] for e in led.events() if e["kind"] == "halt")
     assert all(o["exec_date"] <= halt_day for o in led.orders())
+
+
+def test_rebalance_void_reopens_decision(tmp_path):
+    led = Ledger("t", 1.0, tmp_path)
+    led.add_event("2026-11-24", "rebalance", "2026-10-30")
+    assert led.rebalanced_for("2026-10-30")
+    led.add_event("2026-11-25", "rebalance_void", "2026-10-30")
+    assert not led.rebalanced_for("2026-10-30")
+    led.add_event("2026-11-25", "rebalance", "2026-10-30")
+    assert led.rebalanced_for("2026-10-30")

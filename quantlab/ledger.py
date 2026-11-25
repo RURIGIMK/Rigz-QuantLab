@@ -124,5 +124,10 @@ class Ledger:
         return bool(state) and state[-1] == "halt"
 
     def rebalanced_for(self, decision_date: str) -> bool:
-        return any(o["decision_date"] == decision_date for o in self.orders()) or any(
-            e["kind"] == "rebalance" and e["detail"] == decision_date for e in self.events())
+        """True if this decision was acted on. A later "rebalance_void" event for the same
+        decision (append-only correction) re-opens it."""
+        if any(o["decision_date"] == decision_date for o in self.orders()):
+            return True
+        state = [e["kind"] for e in self.events()
+                 if e["detail"] == decision_date and e["kind"] in ("rebalance", "rebalance_void")]
+        return bool(state) and state[-1] == "rebalance"

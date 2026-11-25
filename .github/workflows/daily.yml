@@ -35,12 +35,12 @@ jobs:
         run: python -m quantlab.notify
       - name: Run accounts
         run: python -m quantlab.daily
-      - name: Autonomous broker trading
+      - name: Broker monitoring (NAV, kill switch; no trading after US close)
         env:
           CTRADER_CLIENT_ID: ${{ secrets.CTRADER_CLIENT_ID }}
           CTRADER_CLIENT_SECRET: ${{ secrets.CTRADER_CLIENT_SECRET }}
           CTRADER_REFRESH_TOKEN: ${{ secrets.CTRADER_REFRESH_TOKEN }}
-        run: python -m quantlab.autotrade
+        run: python -m quantlab.autotrade --monitor
       - name: Commit data and ledger
         if: always()
         run: |

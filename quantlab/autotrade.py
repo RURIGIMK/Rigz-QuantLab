@@ -41,7 +41,8 @@ def resolve_symbols(wanted: list[str], available: dict[str, int], overrides: dic
     return out
 
 
-def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: bool = False) -> None:
+def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: bool = False,
+                monitor: bool = False) -> None:
     cid, secret = tokens.env_credentials()
     access = tokens.valid_access_token(cid, secret)
     led = Ledger(name, acct.get("initial_cash", 0.0))
@@ -96,8 +97,8 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
             return
 
         decision = latest_decision_date(signal_px.index)
-        if decision is None or led.rebalanced_for(decision.date().isoformat()):
-            return
+        if monitor or decision is None or led.rebalanced_for(decision.date().isoformat()):
+            return   # monitor mode (night run): NAV + kill switch only; trading happens in market hours
         target = build_strategy(cfg)(signal_px.loc[:decision])
         cash_sym = cfg["strategy"]["cash_symbol"]
         trade_target = {k: v for k, v in target.items() if k != cash_sym}   # cash proxy = stay flat
@@ -145,7 +146,7 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
     messages.append("\n".join(lines))
 
 
-def main(dry_run: bool = False) -> int:
+def main(dry_run: bool = False, monitor: bool = False) -> int:
     cfg = load_config()
     api_accounts = {n: a for n, a in cfg["accounts"].items() if a.get("enabled") and a.get("mode") == "api"}
     if not api_accounts:
@@ -165,7 +166,7 @@ def main(dry_run: bool = False) -> int:
     status = 0
     for name, acct in api_accounts.items():
         try:
-            run_account(name, acct, cfg, messages, dry_run)
+            run_account(name, acct, cfg, messages, dry_run, monitor)
         except Exception as e:  # noqa: BLE001 - one account failing must be reported, not hidden
             status = 1
             messages.append(f"❌ <b>{name}</b> autotrade error: {html.escape(str(e))}")
@@ -178,4 +179,4 @@ def main(dry_run: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(dry_run="--dry-run" in sys.argv))
+    sys.exit(main(dry_run="--dry-run" in sys.argv, monitor="--monitor" in sys.argv))
