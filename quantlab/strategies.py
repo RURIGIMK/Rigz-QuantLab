@@ -79,3 +79,28 @@ def fx_trend(lookbacks=(21, 63, 126, 252), target_vol: float = 0.10, cov_window:
 
     strat.__name__ = f"fx_trend_vol{int(target_vol * 100)}"
     return strat
+
+
+def fx_bold(lookbacks=(21, 63, 126, 252)):
+    """Bold play: one position, in the pair with the strongest multi-horizon trend.
+
+    Returns {pair: +1 or -1} (direction only); sizing is done by the account
+    (minimum lot). Ties on trend agreement are broken by 3-month risk-adjusted
+    momentum. Chosen for speed to a target, not for expected value: see
+    docs/results/2026-11-25-fx-bold-play.md.
+    """
+    import numpy as np
+
+    def strat(hist: pd.DataFrame) -> pd.Series:
+        if len(hist) <= max(lookbacks) + 1:
+            return pd.Series(dtype=float)
+        last = hist.iloc[-1]
+        sig = sum(np.sign(last / hist.iloc[-1 - lb] - 1) for lb in lookbacks) / len(lookbacks)
+        mom = (last / hist.iloc[-64] - 1) / hist.pct_change().iloc[-63:].std()
+        score = sig.abs() + 0.001 * mom.abs()
+        sym = score.idxmax()
+        if sig[sym] == 0:
+            return pd.Series(dtype=float)
+        return pd.Series({sym: 1.0 if sig[sym] > 0 else -1.0})
+    strat.__name__ = "fx_bold"
+    return strat

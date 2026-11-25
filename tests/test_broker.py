@@ -88,3 +88,17 @@ def test_symbol_resolution():
     avail = {"SPY.US": 1, "EURUSD": 2, "QQQ.US": 3, "GLD.US": 4}
     got = resolve_symbols(["SPY", "EURUSD", "QQQ", "XYZ", "GLD"], avail, {"GLD": "GLD.US"})
     assert got == {"SPY": 1, "EURUSD": 2, "QQQ": 3, "GLD": 4}
+
+
+def test_fx_bold_picks_one_direction_and_min_lot_sizing(px):
+    from quantlab import strategies
+    fx = store.load_prices("fx", "close")
+    fx = fx[fx.index.dayofweek < 5]
+    for cut in (0.4, 0.7, 1.0):
+        tgt = strategies.fx_bold()(fx.iloc[: int(len(fx) * cut)])
+        assert len(tgt) == 1 and abs(tgt.iloc[0]) == 1
+    sym = tgt.index[0]
+    nav = 5000 / 129
+    w = {sym: tgt.iloc[0] * 1000 * planner.base_usd_price(sym, px) * 1.001 / nav}
+    acts = planner.plan(w, nav, px, [], specs() | {sym: SymbolSpec(99, sym, **FX)}, max_gross=60, max_pos=60)
+    assert len(acts) == 1 and acts[0].volume == 100_000          # exactly 0.01 lot

@@ -21,7 +21,7 @@ import sys
 
 import pandas as pd
 
-from quantlab import notify, store
+from quantlab import notify, store, strategies
 from quantlab.brokers import planner, tokens
 from quantlab.brokers.ctrader import BUY, SELL, CTraderClient
 from quantlab.daily import build_strategy, latest_decision_date, load_config
@@ -47,10 +47,10 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
     access = tokens.valid_access_token(cid, secret)
     led = Ledger(name, acct.get("initial_cash", 0.0))
 
-    signal_px = store.load_prices(acct.get("market", "us_etf"), "adj_close",
-                                  acct.get("universe"))
-    close = store.load_prices(acct.get("market", "us_etf"), "close").iloc[-1]
-    usd_px = {**close.to_dict()}
+    market = acct.get("market", "us_etf")
+    signal_px = store.load_prices(market, "adj_close", acct.get("universe"))
+    signal_px = signal_px[signal_px.index.dayofweek < 5]
+    usd_px = store.load_prices("us_etf", "close").iloc[-1].to_dict()
     if store.available("fx"):
         usd_px.update(store.load_prices("fx", "close").iloc[-1].to_dict())
     today = signal_px.index[-1].date().isoformat()
@@ -81,27 +81,43 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
         if not dry_run:
             led.add_nav(today, nav_usd, nav_usd, holdings)
 
-        # kill switch: flatten and stop
-        peak = max(n["nav"] for n in led.nav_history())
+        # kill switch / profit target: flatten and stop
+        hist_navs = [n["nav"] for n in led.nav_history()] or [nav_usd]
+        peak, start_nav = max(hist_navs + [nav_usd]), hist_navs[0]
         dd = nav_usd / peak - 1
-        if led.halted() or dd <= -cfg["risk"]["kill_drawdown"]:
-            if not led.halted():
-                led.add_event(today, "halt", f"drawdown {dd:.1%}")
+        kill = acct.get("kill_drawdown", cfg["risk"]["kill_drawdown"])
+        target_mult = acct.get("take_profit_multiple")
+        hit_target = bool(target_mult) and nav_usd >= start_nav * target_mult
+        if led.halted() or (kill is not None and dd <= -kill) or hit_target:
+            if not led.halted() and not dry_run:
+                led.add_event(today, "halt", f"target reached: NAV {nav_usd:.2f} >= {target_mult}x start"
+                              if hit_target else f"drawdown {dd:.1%}")
+            if dry_run:
+                print(f"[autotrade] {name}: would halt (dd {dd:.1%}, target_hit {hit_target})")
+                return
             flat = planner.plan({}, nav_usd, usd_px, positions, specs, max_gross=0, max_pos=0)
             for a in flat:
                 c.close_position(a.position_id, a.volume)
                 led._append("executions", {"date": today, "kind": "close", "symbol": a.symbol,
                                            "volume": a.volume, "reason": "kill_switch"})
-            messages.append(f"🛑 <b>{name}</b>: kill switch, drawdown {dd:.1%}. "
-                            f"Closed {len(flat)} positions; trading halted.")
+            messages.append((f"🎯 <b>{name}</b>: TARGET HIT. NAV ${nav_usd:,.2f} ({nav_usd / start_nav:.2f}x start). "
+                             if hit_target else f"🛑 <b>{name}</b>: kill switch, drawdown {dd:.1%}. ")
+                            + f"Closed {len(flat)} positions; trading halted.")
             return
 
-        decision = latest_decision_date(signal_px.index)
+        decision = (signal_px.index[-1] if acct.get("rebalance") == "daily"
+                    else latest_decision_date(signal_px.index))
         if monitor or decision is None or led.rebalanced_for(decision.date().isoformat()):
             return   # monitor mode (night run): NAV + kill switch only; trading happens in market hours
-        target = build_strategy(cfg)(signal_px.loc[:decision])
+        strat = (getattr(strategies, acct["strategy"])() if acct.get("strategy") else build_strategy(cfg))
+        target = strat(signal_px.loc[:decision])
         cash_sym = cfg["strategy"]["cash_symbol"]
         trade_target = {k: v for k, v in target.items() if k != cash_sym}   # cash proxy = stay flat
+        if acct.get("sizing") == "min_lot":
+            # direction-only target -> exactly the broker's minimum volume per position
+            trade_target = {k: (1 if v > 0 else -1) * specs[k].min_volume / 100
+                            * planner.base_usd_price(k, usd_px) * 1.001 / nav_usd
+                            for k, v in trade_target.items() if k in specs and v}
         unmapped = sorted(set(trade_target) - set(specs))
         actions = planner.plan(trade_target, nav_usd, usd_px, positions, specs,
                                max_gross=acct.get("max_gross", 1.0), max_pos=acct.get("max_pos", 0.6))
