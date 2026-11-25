@@ -133,9 +133,14 @@ def main() -> int:
         print("[autotrade] no enabled API accounts")
         return 0
     try:
-        tokens.env_credentials()
+        _, secret = tokens.env_credentials()
     except RuntimeError as e:
         print(f"[autotrade] skipped: {e}")
+        return 0
+    if tokens.load(secret) is None:
+        # credentials exist but the one-time ctrader-connect step hasn't run yet:
+        # that's "not connected", not a failure; stay quiet instead of alerting nightly
+        print("[autotrade] skipped: broker not connected yet (run ctrader-connect)")
         return 0
     messages: list[str] = []
     status = 0
