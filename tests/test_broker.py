@@ -102,3 +102,12 @@ def test_fx_bold_picks_one_direction_and_min_lot_sizing(px):
     w = {sym: tgt.iloc[0] * 1000 * planner.base_usd_price(sym, px) * 1.001 / nav}
     acts = planner.plan(w, nav, px, [], specs() | {sym: SymbolSpec(99, sym, **FX)}, max_gross=60, max_pos=60)
     assert len(acts) == 1 and acts[0].volume == 100_000          # exactly 0.01 lot
+
+
+def test_unrealized_pnl_in_usd(px):
+    # long 1,000 EUR bought 1% below the latest close -> profit ~1% of notional, in USD
+    p = Position(1, 1, BUY, 100_000, px["EURUSD"] * 0.99)
+    assert planner.unrealized_usd("EURUSD", p, px) == pytest.approx(1000 * px["EURUSD"] * 0.01, rel=1e-6)
+    # short 1,000 USD vs JPY entered 1% above close -> profit in JPY converted to USD
+    s = Position(2, 4, SELL, 100_000, px["USDJPY"] * 1.01)
+    assert planner.unrealized_usd("USDJPY", s, px) == pytest.approx(1000 * 0.01, rel=1e-2)

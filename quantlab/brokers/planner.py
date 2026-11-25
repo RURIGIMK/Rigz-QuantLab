@@ -97,3 +97,21 @@ def plan(targets: dict[str, float], nav_usd: float, usd_px: dict[str, float],
                     to_cut -= cut
     # closes before opens frees margin first
     return [a for a in actions if a.kind == "close"] + [a for a in actions if a.kind == "open"]
+
+
+def unrealized_usd(symbol: str, pos: Position, usd_px: dict[str, float]) -> float:
+    """Approximate open P&L in USD at the latest daily close (good enough for a daily system)."""
+    if symbol not in usd_px or not pos.price:
+        return 0.0
+    units = pos.volume / 100 * (1 if pos.side == BUY else -1)
+    pnl_quote = units * (usd_px[symbol] - pos.price)
+    if len(symbol) == 6 and symbol.isalpha():
+        quote = symbol[3:]
+        if quote == "USD":
+            return pnl_quote
+        if "USD" + quote in usd_px:
+            return pnl_quote / usd_px["USD" + quote]
+        if quote + "USD" in usd_px:
+            return pnl_quote * usd_px[quote + "USD"]
+        return 0.0
+    return pnl_quote

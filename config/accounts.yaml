@@ -17,20 +17,25 @@ accounts:
     mode: paper            # fills simulated at the execution-day close
     initial_cash: 5.40     # ~KSh 700, mirrors the planned live account
     fee_bps: 10
-  pepperstone_demo:
-    enabled: true          # trades automatically once cTrader is connected (ctrader-connect workflow)
+  fx_bold_5k:
+    enabled: true
     mode: api              # fully autonomous: no human in the loop
     broker: ctrader
     env: demo              # demo | live; the code refuses to trade if the broker's flag disagrees
     account_login: 5377878
     currency: EUR
-    market: us_etf         # trades the ETF strategy as share CFDs
-    # Only ETFs Pepperstone offers as CFDs (checked 2026-11-25). BIL is signal-only:
-    # a "cash" decision means staying flat.
-    universe: [SPY, QQQ, IWM, EFA, EEM, TLT, IEF, XLE, BIL]
-    max_gross: 1.0         # no leverage for the ETF strategy
-    max_pos: 0.6
-    symbol_map: {}         # e.g. {SPY: "SPY.US"} if auto-matching misses a symbol
+    # Goal (set 2026-11-25): turn KSh 5,000 into KSh 10,000 as fast as possible, on demo.
+    # See docs/results/2026-11-25-fx-bold-play.md (41% doubled, 59% wiped, ~6 weeks either way).
+    virtual_capital_usd: 38.76     # KSh 5,000 at ~129 KES/USD; the demo is traded as if it held only this
+    market: fx
+    strategy: fx_bold
+    rebalance: daily
+    sizing: min_lot                # one 0.01-lot position (~30x leverage at this size)
+    max_gross: 60                  # leverage caps sized for the min lot; nothing larger is ever opened
+    max_pos: 60
+    kill_drawdown: null            # no drawdown kill: bold play only stops at target or stop-out
+    take_profit_multiple: 2.0      # halt at KSh 10,000
+    stop_out_fraction: 0.15        # halt where a real 1:100 KSh 5,000 account would be margin-closed
   live:
     enabled: false         # flip to true once the broker account is funded
     mode: manual           # Telegram tickets; you place orders and record fills

@@ -66,17 +66,30 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
 
         trader = c.trader()
         balance = trader["balance_money"]
-        nav_usd = balance * (usd_px.get("EURUSD", 1.0) if acct.get("currency") == "EUR" else 1.0)
+        fx_rate = usd_px.get("EURUSD", 1.0) if acct.get("currency") == "EUR" else 1.0
+        broker_nav = balance * fx_rate
         ids = resolve_symbols(list(signal_px.columns), c.symbols(), acct.get("symbol_map", {}))
         specs = c.symbol_specs(ids)
         missing = sorted(set(signal_px.columns) - set(specs))
         positions = c.positions()
         id_to_sym = {s.symbol_id: n for n, s in specs.items()}
+        unrealized = sum(planner.unrealized_usd(id_to_sym.get(p.symbol_id), p, usd_px) for p in positions
+                         if id_to_sym.get(p.symbol_id))
+        nav_usd = broker_nav + unrealized
+        if acct.get("virtual_capital_usd"):
+            # Trade the big demo as if it held only `virtual_capital_usd`: NAV = virtual capital
+            # + everything the strategy has made or lost since the baseline was recorded.
+            base = next((e for e in led.events() if e["kind"] == "virtual_baseline"), None)
+            if base is None and not dry_run:
+                led.add_event(today, "virtual_baseline", f"{broker_nav:.6f}")
+            baseline = float(base["detail"]) if base else broker_nav
+            nav_usd = acct["virtual_capital_usd"] + (broker_nav - baseline) + unrealized
         holdings = {}
         for p in positions:
             n = id_to_sym.get(p.symbol_id, str(p.symbol_id))
             holdings[n] = holdings.get(n, 0.0) + (p.volume if p.side == BUY else -p.volume) / 100
-        print(f"[autotrade] {name}: balance {balance:.2f} {acct.get('currency', 'USD')} = ${nav_usd:,.2f}; "
+        print(f"[autotrade] {name}: broker balance {balance:.2f} {acct.get('currency', 'USD')}; "
+              f"strategy NAV ${nav_usd:,.2f} (unrealized ${unrealized:,.2f}); "
               f"resolved {sorted(specs)}; positions {holdings}")
         if not dry_run:
             led.add_nav(today, nav_usd, nav_usd, holdings)
@@ -88,10 +101,13 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
         kill = acct.get("kill_drawdown", cfg["risk"]["kill_drawdown"])
         target_mult = acct.get("take_profit_multiple")
         hit_target = bool(target_mult) and nav_usd >= start_nav * target_mult
-        if led.halted() or (kill is not None and dd <= -kill) or hit_target:
+        floor = acct.get("stop_out_fraction")
+        hit_floor = bool(floor) and nav_usd <= start_nav * floor
+        if led.halted() or (kill is not None and dd <= -kill) or hit_target or hit_floor:
             if not led.halted() and not dry_run:
                 led.add_event(today, "halt", f"target reached: NAV {nav_usd:.2f} >= {target_mult}x start"
-                              if hit_target else f"drawdown {dd:.1%}")
+                              if hit_target else f"stop-out: NAV {nav_usd:.2f}" if hit_floor
+                              else f"drawdown {dd:.1%}")
             if dry_run:
                 print(f"[autotrade] {name}: would halt (dd {dd:.1%}, target_hit {hit_target})")
                 return
@@ -101,7 +117,9 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
                 led._append("executions", {"date": today, "kind": "close", "symbol": a.symbol,
                                            "volume": a.volume, "reason": "kill_switch"})
             messages.append((f"🎯 <b>{name}</b>: TARGET HIT. NAV ${nav_usd:,.2f} ({nav_usd / start_nav:.2f}x start). "
-                             if hit_target else f"🛑 <b>{name}</b>: kill switch, drawdown {dd:.1%}. ")
+                             if hit_target else
+                             f"💀 <b>{name}</b>: stop-out. NAV ${nav_usd:,.2f} ({nav_usd / start_nav:.0%} of start). "
+                             if hit_floor else f"🛑 <b>{name}</b>: kill switch, drawdown {dd:.1%}. ")
                             + f"Closed {len(flat)} positions; trading halted.")
             return
 
@@ -151,7 +169,8 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
 
     tgt = ", ".join(f"{k} {v:.0%}" for k, v in target.items()) or "flat"
     lines = [f"🤖 <b>{name}</b> rebalanced for {decision.date()} ({acct.get('env')})",
-             f"Target: {html.escape(tgt)}", f"Balance ${nav_usd:,.2f}; {len(done)} orders executed."]
+             f"Target: {html.escape(tgt)}",
+             f"NAV ${nav_usd:,.2f} (KSh {nav_usd * usd_px.get('USDKES', 129):,.0f}); {len(done)} orders executed."]
     lines += [f"• {a.kind} {SIDE[a.side]} {a.volume / 100:g} {a.symbol}" for a in done]
     if failed:
         lines.append("⚠️ Failed: " + html.escape("; ".join(failed)) + " (will retry next run)")

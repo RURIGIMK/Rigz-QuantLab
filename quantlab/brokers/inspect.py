@@ -14,7 +14,7 @@ from quantlab.daily import load_config
 
 
 def main() -> None:
-    cfg = load_config()["accounts"]["pepperstone_demo"]
+    cfg = load_config()["accounts"]["fx_bold_5k"]
     cid, secret = tokens.env_credentials()
     with CTraderClient(cfg["env"], cid, secret, tokens.valid_access_token(cid, secret)) as c:
         acct = next(a for a in c.accounts() if str(a.get("traderLogin")) == str(cfg["account_login"]))
