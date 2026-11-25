@@ -1,0 +1,17 @@
+name: ctrader-inspect
+# Read-only: lists broker symbol names and contract specs. Places no orders.
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      CTRADER_CLIENT_ID: ${{ secrets.CTRADER_CLIENT_ID }}
+      CTRADER_CLIENT_SECRET: ${{ secrets.CTRADER_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - run: python -m quantlab.brokers.inspect
