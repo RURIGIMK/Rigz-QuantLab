@@ -93,6 +93,13 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
               f"strategy NAV ${nav_usd:,.2f} (unrealized ${unrealized:,.2f}); "
               f"resolved {sorted(specs)}; positions {holdings}")
         rate = acct.get("ksh_per_usd", 129.0)
+        if not dry_run:
+            import json as _json
+            (led.dir / "heartbeat.json").write_text(_json.dumps({
+                "last_check_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                "mode": "monitor" if monitor else "trade", "nav_usd": round(nav_usd, 4)}) + "\n")
+            if not monitor:
+                (led.dir / "trade_heartbeat.json").write_text((led.dir / "heartbeat.json").read_text())
         prior = [n for n in led.nav_history() if n["date"] < today]
         prev_nav = prior[-1]["nav"] if prior else None
         if not dry_run:
@@ -108,9 +115,10 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
             first = (led.nav_history() or [{"nav": nav_usd}])[0]["nav"]
             since = prior[-1]["date"] if prior else today
             todays = [e for e in led._read("executions") if e.get("date", "") > since or e.get("date") == today]
-            messages.append(reports.daily_summary(name, nav_usd, prev_nav, first, rate, open_lines,
-                                                  acct.get("take_profit_multiple"),
-                                                  acct.get("stop_out_fraction"), todays))
+            msg = reports.daily_summary(name, nav_usd, prev_nav, first, rate, open_lines,
+                                        acct.get("take_profit_multiple"),
+                                        acct.get("stop_out_fraction"), todays)
+            messages.append(msg + "\n\n" + health_line(led, secret))
 
         # kill switch / profit target: flatten and stop
         hist_navs = [n["nav"] for n in led.nav_history()] or [nav_usd]
@@ -225,6 +233,26 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
         led.add_event(today, "rebalance", decision.date().isoformat())   # only mark done when complete
     if lines:
         messages.append("\n".join(lines))
+
+
+def health_line(led: Ledger, secret: str) -> str:
+    """Last *trading* check (from the trade workflow) and login expiry, with an alarm if stale."""
+    import json as _json
+    trade_hb = led.dir / "trade_heartbeat.json"
+    parts, alarm = [], False
+    if trade_hb.exists():
+        last = dt.datetime.fromisoformat(_json.loads(trade_hb.read_text())["last_check_utc"])
+        hours = (dt.datetime.now(dt.timezone.utc) - last).total_seconds() / 3600
+        alarm = hours > 30
+        parts.append(f"last strategy check {hours:.0f}h ago")
+    else:
+        parts.append("no strategy check recorded yet")
+    tok = tokens.load(secret)
+    if tok:
+        days = (tok["expires_at"] - dt.datetime.now(dt.timezone.utc).timestamp()) / 86400
+        alarm = alarm or days < 3
+        parts.append(f"broker login valid {days:.0f} more days (auto-renews)")
+    return ("🚨 <b>System health: ATTENTION</b> · " if alarm else "🩺 System health: OK · ") + "; ".join(parts)
 
 
 def main(dry_run: bool = False, monitor: bool = False, summary: bool = False) -> int:

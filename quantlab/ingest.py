@@ -35,6 +35,24 @@ def clean_fx(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def fetch(symbol: str, start: str, market: str = "us_etf") -> pd.DataFrame:
+    """Download with retries; on persistent failure fall back to the last committed data."""
+    import time
+    for attempt in range(3):
+        try:
+            df = _fetch(symbol, start, market)
+            if not df.empty:
+                return df
+        except Exception as e:  # noqa: BLE001
+            log.warning("%s: download attempt %d failed: %s", symbol, attempt + 1, e)
+        time.sleep(5 * (attempt + 1))
+    log.warning("%s: using last committed data", symbol)
+    try:
+        return store.read_bars(market, symbol)
+    except FileNotFoundError:
+        return pd.DataFrame()
+
+
+def _fetch(symbol: str, start: str, market: str = "us_etf") -> pd.DataFrame:
     import yfinance as yf
 
     raw = yf.Ticker(symbol + YAHOO_SUFFIX[market]).history(start=start, auto_adjust=False, actions=True)

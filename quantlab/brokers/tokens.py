@@ -43,15 +43,21 @@ def _token_call(params: dict) -> dict:
     url = TOKEN_URL + "?" + urllib.parse.urlencode(params)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
     body = {}
-    for method in ("GET", "POST"):   # docs show GET for exchange; refresh example uses POST
-        req = urllib.request.Request(url, method=method, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                body = json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            body = {"description": f"HTTP {e.code}"}
-        if body.get("accessToken") or body.get("access_token"):
+    for attempt in range(3):
+        for method in ("GET", "POST"):   # docs show GET for exchange; refresh example uses POST
+            req = urllib.request.Request(url, method=method, headers=headers)
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    body = json.loads(r.read())
+            except urllib.error.HTTPError as e:
+                body = {"description": f"HTTP {e.code}"}
+            except (urllib.error.URLError, TimeoutError) as e:
+                body = {"description": f"network: {e}"}
+            if body.get("accessToken") or body.get("access_token"):
+                break
+        if body.get("accessToken") or body.get("access_token") or "network" not in str(body.get("description")):
             break
+        time.sleep(10 * (attempt + 1))
     if "accessToken" not in body and "access_token" not in body:
         raise RuntimeError(f"token endpoint error: {body.get('description') or body.get('errorCode') or body}")
     access = body.get("accessToken") or body.get("access_token")

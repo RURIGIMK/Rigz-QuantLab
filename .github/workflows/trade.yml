@@ -1,9 +1,12 @@
 name: trade
-# Autonomous order execution while US markets are open (share CFDs only trade then).
-# 15:37 UTC = 10:37 New York in winter, 11:37 in summer; 18:37 Nairobi.
+# Autonomous strategy checks and order execution. Runs every 3 hours on weekdays:
+# GitHub can delay or drop scheduled runs, so redundancy keeps the system on time.
+# Safe to repeat: a decision is never executed twice (ledger "rebalance" events).
+# 15:37 UTC is kept for share CFDs (US market open).
 on:
   schedule:
     - cron: "37 15 * * 1-5"
+    - cron: "23 */3 * * 1-5"
   workflow_dispatch:
 
 permissions:

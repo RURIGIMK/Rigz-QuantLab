@@ -72,10 +72,20 @@ class CTraderClient:
 
     # ---- transport -----------------------------------------------------
     def __enter__(self):
-        self.ws = connect(HOSTS[self.env], open_timeout=self.timeout, max_size=2**24)
         cid, secret = self._creds
-        self.request(PT["APP_AUTH_REQ"], {"clientId": cid, "clientSecret": secret}, PT["APP_AUTH_RES"])
-        return self
+        last = None
+        for attempt in range(4):                     # 0s, 5s, 15s, 45s back-off
+            try:
+                self.ws = connect(HOSTS[self.env], open_timeout=self.timeout, max_size=2**24)
+                self.request(PT["APP_AUTH_REQ"], {"clientId": cid, "clientSecret": secret},
+                             PT["APP_AUTH_RES"])
+                return self
+            except Exception as e:  # noqa: BLE001 - network blips, broker restarts
+                last = e
+                if self.ws:
+                    self.ws.close()
+                time.sleep(5 * (3 ** attempt) if attempt < 3 else 0)
+        raise CTraderError(f"could not connect after retries: {last}")
 
     def __exit__(self, *exc):
         if self.ws:

@@ -111,3 +111,26 @@ def test_unrealized_pnl_in_usd(px):
     # short 1,000 USD vs JPY entered 1% above close -> profit in JPY converted to USD
     s = Position(2, 4, SELL, 100_000, px["USDJPY"] * 1.01)
     assert planner.unrealized_usd("USDJPY", s, px) == pytest.approx(1000 * 0.01, rel=1e-2)
+
+
+def test_health_line_alarms_when_stale_or_login_expiring(tmp_path):
+    import datetime as dt, json
+    from quantlab.autotrade import health_line
+    from quantlab.ledger import Ledger
+    led = Ledger("hb", 0, tmp_path)
+    fresh = dt.datetime.now(dt.timezone.utc).isoformat()
+    (led.dir / "trade_heartbeat.json").write_text(json.dumps({"last_check_utc": fresh}))
+    tok_path = tmp_path / "t.enc"
+    tokens.save({"access_token": "a", "refresh_token": "r", "expires_at": time.time() + 20 * 86400}, "s", tok_path)
+    orig = tokens.TOKEN_FILE
+    tokens.TOKEN_FILE = tok_path
+    try:
+        import quantlab.brokers.tokens as T
+        T.load.__defaults__ = (tok_path,)
+        assert health_line(led, "s").startswith("🩺 System health: OK")
+        old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=40)).isoformat()
+        (led.dir / "trade_heartbeat.json").write_text(json.dumps({"last_check_utc": old}))
+        assert "ATTENTION" in health_line(led, "s")
+    finally:
+        tokens.TOKEN_FILE = orig
+        T.load.__defaults__ = (orig,)
