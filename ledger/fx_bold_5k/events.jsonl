@@ -3,3 +3,4 @@
 {"date": "2026-11-26", "detail": "2026-11-26", "kind": "rebalance"}
 {"date": "2026-11-27", "detail": "10000.00", "kind": "virtual_baseline_ccy"}
 {"date": "2026-11-27", "detail": "nav entries for 2026-11-26/27 overstated by EUR/USD translation of the full demo balance; corrected from 2026-11-27", "kind": "note"}
+{"date": "2026-11-27", "detail": "2026-11-27", "kind": "rebalance"}
