@@ -38,7 +38,11 @@ class Ledger:
         return self._read("fills")
 
     def nav_history(self) -> list[dict]:
-        return self._read("nav")
+        """One row per date; a later row for the same date (a correction) wins."""
+        by_date: dict[str, dict] = {}
+        for row in self._read("nav"):
+            by_date[row["date"]] = row
+        return [by_date[d] for d in sorted(by_date)]
 
     def events(self) -> list[dict]:
         return self._read("events")
@@ -72,10 +76,11 @@ class Ledger:
             "filled_at": filled_at, "entered_by": entered_by,
         })
 
-    def add_nav(self, date: str, nav: float, cash: float, holdings: dict) -> None:
-        if any(n["date"] == date for n in self.nav_history()):
+    def add_nav(self, date: str, nav: float, cash: float, holdings: dict, correction: str = "") -> None:
+        if not correction and any(n["date"] == date for n in self.nav_history()):
             return
-        self._append("nav", {"date": date, "nav": round(nav, 6), "cash": round(cash, 6),
+        extra = {"correction": correction} if correction else {}
+        self._append("nav", {**extra, "date": date, "nav": round(nav, 6), "cash": round(cash, 6),
                              "holdings": {k: round(v, 8) for k, v in holdings.items()}})
 
     def add_dividend(self, date: str, symbol: str, quantity: float, per_share: float,

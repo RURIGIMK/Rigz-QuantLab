@@ -79,11 +79,13 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
         if acct.get("virtual_capital_usd"):
             # Trade the big demo as if it held only `virtual_capital_usd`: NAV = virtual capital
             # + everything the strategy has made or lost since the baseline was recorded.
-            base = next((e for e in led.events() if e["kind"] == "virtual_baseline"), None)
+            # The baseline is kept in the ACCOUNT currency: converting the whole demo balance to
+            # USD each day would turn EUR/USD moves into fake profit or loss.
+            base = next((e for e in reversed(led.events()) if e["kind"] == "virtual_baseline_ccy"), None)
             if base is None and not dry_run:
-                led.add_event(today, "virtual_baseline", f"{broker_nav:.6f}")
-            baseline = float(base["detail"]) if base else broker_nav
-            nav_usd = acct["virtual_capital_usd"] + (broker_nav - baseline) + unrealized
+                led.add_event(today, "virtual_baseline_ccy", f"{balance:.2f}")
+            baseline = float(base["detail"]) if base else balance
+            nav_usd = acct["virtual_capital_usd"] + (balance - baseline) * fx_rate + unrealized
         holdings = {}
         for p in positions:
             n = id_to_sym.get(p.symbol_id, str(p.symbol_id))
