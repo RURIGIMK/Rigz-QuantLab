@@ -134,3 +134,22 @@ def test_health_line_alarms_when_stale_or_login_expiring(tmp_path):
     finally:
         tokens.TOKEN_FILE = orig
         T.load.__defaults__ = (orig,)
+
+
+def test_watchdog_flags_stale_heartbeat_halt_and_errors(tmp_path, monkeypatch):
+    import datetime as dt, json
+    from quantlab import watchdog
+    from quantlab import ledger as L
+    monkeypatch.setattr(L, "ROOT", tmp_path)
+    monkeypatch.setattr(watchdog, "recent_failures", lambda hours=26: [])
+    monkeypatch.setattr(watchdog, "Ledger", lambda n, c: L.Ledger(n, c, tmp_path))
+    now = dt.datetime(2026, 11, 26, 9, 0, tzinfo=dt.timezone.utc)          # a Thursday
+    led = L.Ledger("fx_bold_5k", 0, tmp_path)
+    (led.dir / "trade_heartbeat.json").write_text(json.dumps(
+        {"last_check_utc": (now - dt.timedelta(hours=40)).isoformat()}))
+    led.add_event("2026-11-26", "halt", "stop-out")
+    led._append("executions", {"date": "2026-11-26", "symbol": "EURUSD", "error": "MARKET_CLOSED"})
+    got = " | ".join(watchdog.check(now))
+    assert "no strategy check for 40h" in got and "HALTED" in got and "MARKET_CLOSED" in got
+    (led.dir / "trade_heartbeat.json").write_text(json.dumps({"last_check_utc": now.isoformat()}))
+    assert not any("strategy check" in p for p in watchdog.check(now))
