@@ -104,3 +104,22 @@ def fx_bold(lookbacks=(21, 63, 126, 252)):
         return pd.Series({sym: 1.0 if sig[sym] > 0 else -1.0})
     strat.__name__ = "fx_bold"
     return strat
+
+
+def fx_bold_explain(hist: pd.DataFrame, lookbacks=(21, 63, 126, 252)) -> dict:
+    """Why fx_bold picked what it picked: per-horizon returns and the ranking."""
+    import numpy as np
+    last = hist.iloc[-1]
+    rets = {lb: last / hist.iloc[-1 - lb] - 1 for lb in lookbacks}
+    sig = sum(np.sign(r) for r in rets.values()) / len(lookbacks)
+    mom = (last / hist.iloc[-64] - 1) / hist.pct_change().iloc[-63:].std()
+    score = (sig.abs() + 0.001 * mom.abs()).sort_values(ascending=False)
+    def agree(sym):
+        n = int(round(abs(sig[sym]) * len(lookbacks)))
+        return f"{n}/{len(lookbacks)} {'down' if sig[sym] < 0 else 'up'}"
+    top = score.index[0]
+    names = {21: "1m", 63: "3m", 126: "6m", 252: "12m"}
+    return {"symbol": top, "direction": "SHORT" if sig[top] < 0 else "LONG",
+            "horizons": {names.get(lb, f"{lb}d"): float(rets[lb][top]) for lb in lookbacks},
+            "agreement": agree(top), "risk_adj_3m": float(mom[top]),
+            "runners_up": [(s, agree(s)) for s in score.index[1:4]]}

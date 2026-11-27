@@ -21,7 +21,7 @@ import sys
 
 import pandas as pd
 
-from quantlab import notify, store, strategies
+from quantlab import notify, reports, store, strategies
 from quantlab.brokers import planner, tokens
 from quantlab.brokers.ctrader import BUY, SELL, CTraderClient
 from quantlab.daily import build_strategy, latest_decision_date, load_config
@@ -70,7 +70,6 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
         broker_nav = balance * fx_rate
         ids = resolve_symbols(list(signal_px.columns), c.symbols(), acct.get("symbol_map", {}))
         specs = c.symbol_specs(ids)
-        missing = sorted(set(signal_px.columns) - set(specs))
         positions = c.positions()
         id_to_sym = {s.symbol_id: n for n, s in specs.items()}
         unrealized = sum(planner.unrealized_usd(id_to_sym.get(p.symbol_id), p, usd_px) for p in positions
@@ -93,8 +92,23 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
         print(f"[autotrade] {name}: broker balance {balance:.2f} {acct.get('currency', 'USD')}; "
               f"strategy NAV ${nav_usd:,.2f} (unrealized ${unrealized:,.2f}); "
               f"resolved {sorted(specs)}; positions {holdings}")
+        rate = acct.get("ksh_per_usd", 129.0)
+        prior = [n for n in led.nav_history() if n["date"] < today]
+        prev_nav = prior[-1]["nav"] if prior else None
         if not dry_run:
             led.add_nav(today, nav_usd, nav_usd, holdings)
+        open_lines = []
+        for p in positions:
+            sym = id_to_sym.get(p.symbol_id)
+            if sym:
+                u = planner.unrealized_usd(sym, p, usd_px)
+                open_lines.append(f"{'SHORT' if p.side == SELL else 'LONG'} {sym} {p.volume / 100:,.0f} from "
+                                  f"{p.price}, now {usd_px.get(sym)}: {reports.signed_ksh(u, rate)}")
+        if monitor and acct.get("daily_summary") and not dry_run:
+            first = (led.nav_history() or [{"nav": nav_usd}])[0]["nav"]
+            messages.append(reports.daily_summary(name, nav_usd, prev_nav, first, rate, open_lines,
+                                                  acct.get("take_profit_multiple"),
+                                                  acct.get("stop_out_fraction")))
 
         # kill switch / profit target: flatten and stop
         hist_navs = [n["nav"] for n in led.nav_history()] or [nav_usd]
@@ -114,13 +128,23 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
                 print(f"[autotrade] {name}: would halt (dd {dd:.1%}, target_hit {hit_target})")
                 return
             flat = planner.plan({}, nav_usd, usd_px, positions, specs, max_gross=0, max_pos=0)
+            opened = {p.position_id: p.open_ts for p in positions}
+            why_halt = ("target reached" if hit_target else "stop-out level reached" if hit_floor
+                        else "kill switch")
             for a in flat:
-                c.close_position(a.position_id, a.volume)
+                ev = c.close_position(a.position_id, a.volume)
+                deal = ev.get("deal", {})
                 led._append("executions", {"date": today, "kind": "close", "symbol": a.symbol,
-                                           "volume": a.volume, "reason": "kill_switch"})
-            messages.append((f"🎯 <b>{name}</b>: TARGET HIT. NAV ${nav_usd:,.2f} ({nav_usd / start_nav:.2f}x start). "
+                                           "volume": a.volume, "reason": why_halt,
+                                           "price": deal.get("executionPrice"), "deal_id": deal.get("dealId")})
+                messages.append(reports.trade_closed(name, a.symbol, SIDE[a.side], a.volume / 100,
+                                                     deal.get("executionPrice"), deal, fx_rate, rate,
+                                                     opened.get(a.position_id), why_halt))
+            messages.append((f"🎯 <b>{name}</b>: TARGET HIT. {reports.ksh(nav_usd, rate)} "
+                             f"({nav_usd / start_nav:.2f}x start). "
                              if hit_target else
-                             f"💀 <b>{name}</b>: stop-out. NAV ${nav_usd:,.2f} ({nav_usd / start_nav:.0%} of start). "
+                             f"💀 <b>{name}</b>: stop-out. {reports.ksh(nav_usd, rate)} "
+                             f"({nav_usd / start_nav:.0%} of start). "
                              if hit_floor else f"🛑 <b>{name}</b>: kill switch, drawdown {dd:.1%}. ")
                             + f"Closed {len(flat)} positions; trading halted.")
             return
@@ -151,6 +175,11 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
             messages.append(f"⚠️ <b>{name}</b>: target includes {', '.join(unmapped)}, which the broker "
                             "doesn't offer. Not trading; fix the account universe or symbol_map.")
             return
+        why = (strategies.fx_bold_explain(signal_px.loc[:decision]) if acct.get("strategy") == "fx_bold"
+               else None)
+        opened = {p.position_id: p.open_ts for p in positions}
+        new_pick = (f"signal moved to {why['direction']} {why['symbol']}" if why else "rebalance")
+        trade_msgs = []
         done, failed = [], []
         for a in actions:
             try:
@@ -164,23 +193,31 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
                     "price": deal.get("executionPrice"), "deal_id": deal.get("dealId"),
                     "position_id": deal.get("positionId", a.position_id)})
                 done.append(a)
+                px_exec = deal.get("executionPrice")
+                if a.kind == "open":
+                    units = a.volume / 100
+                    trade_msgs.append(reports.trade_opened(
+                        name, a.symbol, SIDE[a.side], units, px_exec,
+                        units * planner.base_usd_price(a.symbol, usd_px), nav_usd, rate,
+                        why if why and why["symbol"] == a.symbol else None,
+                        acct.get("take_profit_multiple"), acct.get("stop_out_fraction"), start_nav))
+                else:
+                    trade_msgs.append(reports.trade_closed(name, a.symbol, SIDE[a.side], a.volume / 100,
+                                                           px_exec, deal, fx_rate, rate,
+                                                           opened.get(a.position_id), new_pick))
             except Exception as e:  # noqa: BLE001 - record and continue with the rest
                 led._append("executions", {"date": today, "kind": a.kind, "symbol": a.symbol,
                                            "volume": a.volume, "error": str(e)})
                 failed.append(f"{a.symbol}: {e}")
 
-    tgt = ", ".join(f"{k} {v:.0%}" for k, v in target.items()) or "flat"
-    lines = [f"🤖 <b>{name}</b> rebalanced for {decision.date()} ({acct.get('env')})",
-             f"Target: {html.escape(tgt)}",
-             f"NAV ${nav_usd:,.2f} (KSh {nav_usd * usd_px.get('USDKES', 129):,.0f}); {len(done)} orders executed."]
-    lines += [f"• {a.kind} {SIDE[a.side]} {a.volume / 100:g} {a.symbol}" for a in done]
+    messages.extend(trade_msgs)
+    lines = []
     if failed:
         lines.append("⚠️ Failed: " + html.escape("; ".join(failed)) + " (will retry next run)")
     else:
         led.add_event(today, "rebalance", decision.date().isoformat())   # only mark done when complete
-    if missing:
-        lines.append("Not tradable at broker: " + ", ".join(missing))
-    messages.append("\n".join(lines))
+    if lines:
+        messages.append("\n".join(lines))
 
 
 def main(dry_run: bool = False, monitor: bool = False) -> int:

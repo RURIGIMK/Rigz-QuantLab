@@ -46,15 +46,52 @@ def chat_id() -> int | None:
     return None
 
 
-def send(text: str) -> bool:
-    """Send a message; prints instead when no token/chat is configured."""
+def _send_telegram(text: str) -> bool:
     cid = chat_id() if _token() else None
     if not cid:
-        print("[notify:dry-run]\n" + text)
         return False
     _call("sendMessage", {"chat_id": cid, "text": text, "parse_mode": "HTML",
                           "disable_web_page_preview": True})
     return True
+
+
+def to_whatsapp(text: str) -> str:
+    """Telegram HTML -> WhatsApp formatting (*bold*, _italic_), entities unescaped."""
+    import html as _html
+    import re
+    t = re.sub(r"</?b>", "*", text)
+    t = re.sub(r"</?i>", "_", t)
+    t = re.sub(r"<[^>]+>", "", t)
+    return _html.unescape(t)
+
+
+def _send_whatsapp(text: str) -> bool:
+    """WhatsApp via CallMeBot (free, personal use). Needs WHATSAPP_PHONE + WHATSAPP_APIKEY."""
+    import urllib.parse
+    phone, key = os.environ.get("WHATSAPP_PHONE"), os.environ.get("WHATSAPP_APIKEY")
+    if not phone or not key:
+        return False
+    url = "https://api.callmebot.com/whatsapp.php?" + urllib.parse.urlencode(
+        {"phone": phone, "text": to_whatsapp(text)[:3500], "apikey": key})
+    with urllib.request.urlopen(url, timeout=30) as r:
+        body = r.read().decode(errors="replace")
+    if r.status != 200 or "error" in body.lower()[:200]:
+        raise RuntimeError(f"callmebot: HTTP {r.status}")
+    return True
+
+
+def send(text: str) -> bool:
+    """Send to every configured channel; a failing channel never blocks the others.
+    Prints instead when nothing is configured."""
+    sent = False
+    for name, fn in (("telegram", _send_telegram), ("whatsapp", _send_whatsapp)):
+        try:
+            sent = fn(text) or sent
+        except Exception as e:  # noqa: BLE001
+            print(f"[notify] {name} failed: {e}")
+    if not sent:
+        print("[notify:dry-run]\n" + text)
+    return sent
 
 
 if __name__ == "__main__":

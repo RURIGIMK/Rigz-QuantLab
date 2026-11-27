@@ -55,6 +55,7 @@ class Position:
     side: int            # BUY | SELL
     volume: int          # 0.01 units
     price: float
+    open_ts: int = 0     # ms since epoch
 
 
 class CTraderClient:
@@ -138,7 +139,8 @@ class CTraderClient:
     def positions(self) -> list[Position]:
         res = self.request(PT["RECONCILE_REQ"], {"ctidTraderAccountId": self.account_id}, PT["RECONCILE_RES"])
         return [Position(p["positionId"], p["tradeData"]["symbolId"], p["tradeData"]["tradeSide"],
-                         p["tradeData"]["volume"], p.get("price", 0.0)) for p in res.get("position", [])]
+                         p["tradeData"]["volume"], p.get("price", 0.0),
+                         int(p["tradeData"].get("openTimestamp", 0))) for p in res.get("position", [])]
 
     # ---- trading -------------------------------------------------------
     def _await_execution(self, msg_id: str) -> dict:

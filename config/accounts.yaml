@@ -36,6 +36,8 @@ accounts:
     kill_drawdown: null            # no drawdown kill: bold play only stops at target or stop-out
     take_profit_multiple: 2.0      # halt at KSh 10,000
     stop_out_fraction: 0.15        # halt where a real 1:100 KSh 5,000 account would be margin-closed
+    ksh_per_usd: 129.0             # for reporting in shillings
+    daily_summary: true            # nightly account message (Telegram + WhatsApp)
   live:
     enabled: false         # flip to true once the broker account is funded
     mode: manual           # Telegram tickets; you place orders and record fills

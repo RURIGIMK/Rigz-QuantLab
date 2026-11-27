@@ -23,6 +23,8 @@ jobs:
       CTRADER_REFRESH_TOKEN: ${{ secrets.CTRADER_REFRESH_TOKEN }}
       CTRADER_AUTH_CODE: ${{ inputs.code }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      WHATSAPP_PHONE: ${{ secrets.WHATSAPP_PHONE }}
+      WHATSAPP_APIKEY: ${{ secrets.WHATSAPP_APIKEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
