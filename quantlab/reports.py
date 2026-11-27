@@ -42,6 +42,11 @@ def trade_opened(account: str, symbol: str, side: str, units: float, price: floa
     return "\n".join(lines)
 
 
+def realised_usd(deal: dict, fx_to_usd: float) -> float:
+    """Net realised P&L of a closing deal (price + swap + fees), in USD."""
+    return sum(_money(deal, f, fx_to_usd) for f in ("grossProfit", "swap", "commission"))
+
+
 def trade_closed(account: str, symbol: str, side_closed: str, units: float, exit_price: float,
                  deal: dict, fx_to_usd: float, rate: float, opened_ms: int | None, reason: str) -> str:
     gross = _money(deal, "grossProfit", fx_to_usd)
@@ -64,14 +69,38 @@ def trade_closed(account: str, symbol: str, side_closed: str, units: float, exit
 
 
 def daily_summary(account: str, nav_usd: float, prev_nav: float | None, start_nav: float, rate: float,
-                  open_lines: list[str], target_mult: float | None, stop_frac: float | None) -> str:
+                  open_lines: list[str], target_mult: float | None, stop_frac: float | None,
+                  todays_trades: list[dict] | None = None) -> str:
     day = f" ({signed_ksh(nav_usd - prev_nav, rate)} today)" if prev_nav else ""
     total = (nav_usd / start_nav - 1) if start_nav else 0
-    lines = [f"📊 <b>{account}</b> daily: <b>{ksh(nav_usd, rate)}</b>{day}",
+    lines = [f"📊 <b>End of day · {account}</b>",
+             f"Balance: <b>{ksh(nav_usd, rate)}</b>{day}",
              f"Since start: {total:+.1%} ({ksh(start_nav, rate)} → {ksh(nav_usd, rate)})"]
+    trades = [t for t in (todays_trades or []) if not t.get("error")]
+    lines.append("")
+    if trades:
+        lines.append(f"<b>Trades today ({len(trades)}):</b>")
+        for t in trades:
+            units = t.get("volume", 0) / 100
+            if t.get("kind") == "open":
+                d = "SHORT" if t.get("side") == "SELL" else "LONG"
+                lines.append(f"• Opened {d} {t['symbol']} {units:,.0f} @ {t.get('price')}")
+            else:
+                d = "SHORT" if t.get("side") == "SELL" else "LONG"
+                pnl = t.get("pnl_usd")
+                res = f": <b>{signed_ksh(pnl, rate)}</b>" if pnl is not None else ""
+                lines.append(f"• Closed {d} {t['symbol']} {units:,.0f} {t.get('entry', '?')} → "
+                             f"{t.get('price')}{res}")
+        realised = sum(t.get("pnl_usd") or 0 for t in trades if t.get("kind") == "close")
+        if any(t.get("kind") == "close" for t in trades):
+            lines.append(f"Realised today: <b>{signed_ksh(realised, rate)}</b>")
+    else:
+        lines.append("Trades today: none (signal unchanged)")
+    lines.append("")
+    lines.append("<b>Open positions:</b>")
     if target_mult and stop_frac:
         lo, hi = start_nav * stop_frac, start_nav * target_mult
         prog = (nav_usd - lo) / (hi - lo)
-        lines.append(f"Between stop-out and target: {prog:.0%} of the way to 🎯")
-    lines += open_lines or ["No open positions."]
+        lines.insert(3, f"Progress: {prog:.0%} of the way from stop-out to 🎯 target")
+    lines += open_lines or ["none"]
     return "\n".join(lines)

@@ -42,7 +42,7 @@ def resolve_symbols(wanted: list[str], available: dict[str, int], overrides: dic
 
 
 def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: bool = False,
-                monitor: bool = False) -> None:
+                monitor: bool = False, summary: bool = False) -> None:
     cid, secret = tokens.env_credentials()
     access = tokens.valid_access_token(cid, secret)
     led = Ledger(name, acct.get("initial_cash", 0.0))
@@ -104,11 +104,13 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
                 u = planner.unrealized_usd(sym, p, usd_px)
                 open_lines.append(f"{'SHORT' if p.side == SELL else 'LONG'} {sym} {p.volume / 100:,.0f} from "
                                   f"{p.price}, now {usd_px.get(sym)}: {reports.signed_ksh(u, rate)}")
-        if monitor and acct.get("daily_summary") and not dry_run:
+        if summary and acct.get("daily_summary") and not dry_run:
             first = (led.nav_history() or [{"nav": nav_usd}])[0]["nav"]
+            since = prior[-1]["date"] if prior else today
+            todays = [e for e in led._read("executions") if e.get("date", "") > since or e.get("date") == today]
             messages.append(reports.daily_summary(name, nav_usd, prev_nav, first, rate, open_lines,
                                                   acct.get("take_profit_multiple"),
-                                                  acct.get("stop_out_fraction")))
+                                                  acct.get("stop_out_fraction"), todays))
 
         # kill switch / profit target: flatten and stop
         hist_navs = [n["nav"] for n in led.nav_history()] or [nav_usd]
@@ -135,8 +137,10 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
                 ev = c.close_position(a.position_id, a.volume)
                 deal = ev.get("deal", {})
                 led._append("executions", {"date": today, "kind": "close", "symbol": a.symbol,
-                                           "volume": a.volume, "reason": why_halt,
-                                           "price": deal.get("executionPrice"), "deal_id": deal.get("dealId")})
+                                           "side": SIDE[a.side], "volume": a.volume, "reason": why_halt,
+                                           "price": deal.get("executionPrice"), "deal_id": deal.get("dealId"),
+                                           "pnl_usd": round(reports.realised_usd(deal, fx_rate), 4),
+                                           "entry": deal.get("closePositionDetail", {}).get("entryPrice")})
                 messages.append(reports.trade_closed(name, a.symbol, SIDE[a.side], a.volume / 100,
                                                      deal.get("executionPrice"), deal, fx_rate, rate,
                                                      opened.get(a.position_id), why_halt))
@@ -191,7 +195,10 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
                     "date": today, "decision_date": decision.date().isoformat(), "kind": a.kind,
                     "symbol": a.symbol, "side": SIDE[a.side], "volume": a.volume,
                     "price": deal.get("executionPrice"), "deal_id": deal.get("dealId"),
-                    "position_id": deal.get("positionId", a.position_id)})
+                    "position_id": deal.get("positionId", a.position_id),
+                    **({"pnl_usd": round(reports.realised_usd(deal, fx_rate), 4),
+                        "entry": deal.get("closePositionDetail", {}).get("entryPrice"),
+                        "reason": new_pick} if a.kind == "close" else {"reason": new_pick})})
                 done.append(a)
                 px_exec = deal.get("executionPrice")
                 if a.kind == "open":
@@ -220,7 +227,7 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
         messages.append("\n".join(lines))
 
 
-def main(dry_run: bool = False, monitor: bool = False) -> int:
+def main(dry_run: bool = False, monitor: bool = False, summary: bool = False) -> int:
     cfg = load_config()
     api_accounts = {n: a for n, a in cfg["accounts"].items() if a.get("enabled") and a.get("mode") == "api"}
     if not api_accounts:
@@ -240,7 +247,7 @@ def main(dry_run: bool = False, monitor: bool = False) -> int:
     status = 0
     for name, acct in api_accounts.items():
         try:
-            run_account(name, acct, cfg, messages, dry_run, monitor)
+            run_account(name, acct, cfg, messages, dry_run, monitor, summary)
         except Exception as e:  # noqa: BLE001 - one account failing must be reported, not hidden
             status = 1
             messages.append(f"❌ <b>{name}</b> autotrade error: {html.escape(str(e))}")
@@ -253,4 +260,5 @@ def main(dry_run: bool = False, monitor: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(dry_run="--dry-run" in sys.argv, monitor="--monitor" in sys.argv))
+    sys.exit(main(dry_run="--dry-run" in sys.argv, monitor="--monitor" in sys.argv,
+                  summary="--summary" in sys.argv))

@@ -37,3 +37,16 @@ def test_close_message_uses_broker_deal_numbers():
 
 def test_whatsapp_formatting():
     assert notify.to_whatsapp("<b>EURUSD</b> &amp; <i>x</i>") == "*EURUSD* & _x_"
+
+
+def test_end_of_day_report_lists_trades_and_realised_pnl():
+    trades = [{"kind": "close", "side": "SELL", "symbol": "EURUSD", "volume": 100000, "entry": 1.09445,
+               "price": 1.0920, "pnl_usd": 2.06},
+              {"kind": "open", "side": "BUY", "symbol": "GBPUSD", "volume": 100000, "price": 1.2701},
+              {"kind": "open", "symbol": "X", "volume": 1, "error": "MARKET_CLOSED"}]
+    msg = reports.daily_summary("fx_bold_5k", 40.0, 38.0, 38.76, 129, ["LONG GBPUSD 1,000 ..."], 2.0, 0.15, trades)
+    assert "Trades today (2)" in msg and "Closed SHORT EURUSD" in msg and "+KSh 266" in msg
+    assert "Opened LONG GBPUSD" in msg and "Realised today: <b>+KSh 266</b>" in msg
+    assert "MARKET_CLOSED" not in msg and "Progress:" in msg and "Open positions" in msg
+    quiet = reports.daily_summary("fx_bold_5k", 40.0, 38.0, 38.76, 129, [], 2.0, 0.15, [])
+    assert "none (signal unchanged)" in quiet
