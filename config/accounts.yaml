@@ -28,7 +28,7 @@ accounts:
     # See docs/results/2026-11-25-fx-bold-play.md (41% doubled, 59% wiped, ~6 weeks either way).
     virtual_capital_usd: 38.76     # KSh 5,000 at ~129 KES/USD; the demo is traded as if it held only this
     market: fx
-    strategy: fx_bold
+    strategy: fx_bold_slow        # switched 2026-11-27 from fx_bold (see docs/results/2026-11-27-fx-bold-variants.md)
     rebalance: daily
     sizing: min_lot                # one 0.01-lot position (~30x leverage at this size)
     max_gross: 60                  # leverage caps sized for the min lot; nothing larger is ever opened

@@ -50,3 +50,9 @@ def test_end_of_day_report_lists_trades_and_realised_pnl():
     assert "MARKET_CLOSED" not in msg and "Progress:" in msg and "Open positions" in msg
     quiet = reports.daily_summary("fx_bold_5k", 40.0, 38.0, 38.76, 129, [], 2.0, 0.15, [])
     assert "none (signal unchanged)" in quiet
+
+
+def test_slow_variant_explanation_consistent(fx):
+    pick = strategies.fx_bold_slow()(fx)
+    why = strategies.fx_bold_explain(fx, lookbacks=(252,))
+    assert why["symbol"] == pick.index[0] and set(why["horizons"]) == {"12m"}

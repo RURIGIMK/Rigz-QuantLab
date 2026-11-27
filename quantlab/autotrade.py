@@ -179,8 +179,8 @@ def run_account(name: str, acct: dict, cfg: dict, messages: list[str], dry_run: 
             messages.append(f"⚠️ <b>{name}</b>: target includes {', '.join(unmapped)}, which the broker "
                             "doesn't offer. Not trading; fix the account universe or symbol_map.")
             return
-        why = (strategies.fx_bold_explain(signal_px.loc[:decision]) if acct.get("strategy") == "fx_bold"
-               else None)
+        lbs = {"fx_bold": (21, 63, 126, 252), "fx_bold_slow": (252,)}.get(acct.get("strategy", ""))
+        why = strategies.fx_bold_explain(signal_px.loc[:decision], lookbacks=lbs) if lbs else None
         opened = {p.position_id: p.open_ts for p in positions}
         new_pick = (f"signal moved to {why['direction']} {why['symbol']}" if why else "rebalance")
         trade_msgs = []

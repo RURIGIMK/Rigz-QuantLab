@@ -123,3 +123,11 @@ def fx_bold_explain(hist: pd.DataFrame, lookbacks=(21, 63, 126, 252)) -> dict:
             "horizons": {names.get(lb, f"{lb}d"): float(rets[lb][top]) for lb in lookbacks},
             "agreement": agree(top), "risk_adj_3m": float(mom[top]),
             "runners_up": [(s, agree(s)) for s in score.index[1:4]]}
+
+
+def fx_bold_slow():
+    """Bold play on the 12-month trend only. Chosen 2026-11-27 by a pick/check split
+    (best on 2007-16 starts, confirmed on 2017-26): see docs/results/2026-11-27-fx-bold-variants.md."""
+    strat = fx_bold(lookbacks=(252,))
+    strat.__name__ = "fx_bold_slow"
+    return strat
