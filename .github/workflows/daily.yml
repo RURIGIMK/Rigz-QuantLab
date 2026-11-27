@@ -28,6 +28,7 @@ jobs:
       WHATSAPP_APIKEY: ${{ secrets.WHATSAPP_APIKEY }}
     steps:
       - uses: actions/checkout@v4
+        with: {ref: main}   # latest state, not the commit that queued this run
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install -r requirements.txt
