@@ -28,11 +28,15 @@ def recent_failures(hours: int = 26) -> list[str]:
     with urllib.request.urlopen(req, timeout=30) as r:
         runs = json.loads(r.read())["workflow_runs"]
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=hours)
-    out = []
+    latest: dict[str, dict] = {}                       # runs come newest first
     for run in runs:
+        if run.get("status") == "completed" and run["name"] not in latest:
+            latest[run["name"]] = run
+    out = []
+    for name, run in latest.items():                   # only workflows whose LATEST run failed
         when = dt.datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
-        if when >= cutoff and run.get("conclusion") == "failure" and run["name"] != "watchdog":
-            out.append(f"{run['name']} ({when:%a %H:%M} UTC) {run['html_url']}")
+        if when >= cutoff and run.get("conclusion") == "failure" and name != "watchdog":
+            out.append(f"{name} ({when:%a %H:%M} UTC) {run['html_url']}")
     return out
 
 
